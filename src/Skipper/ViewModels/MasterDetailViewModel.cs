@@ -1,48 +1,52 @@
 ﻿using System;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Threading.Tasks;
 
-using GalaSoft.MvvmLight;
+using Prism.Mvvm;
+using Prism.Regions;
 
-using Microsoft.Toolkit.Uwp.UI.Controls;
-
+using Skipper.Core.Contracts.Services;
 using Skipper.Core.Models;
-using Skipper.Core.Services;
 
 namespace Skipper.ViewModels
 {
-    public class MasterDetailViewModel : ViewModelBase
+    public class MasterDetailViewModel : BindableBase, INavigationAware
     {
+        private readonly ISampleDataService _sampleDataService;
         private SampleOrder _selected;
 
         public SampleOrder Selected
         {
             get { return _selected; }
-            set { Set(ref _selected, value); }
+            set { SetProperty(ref _selected, value); }
         }
 
         public ObservableCollection<SampleOrder> SampleItems { get; private set; } = new ObservableCollection<SampleOrder>();
 
-        public MasterDetailViewModel()
+        public MasterDetailViewModel(ISampleDataService sampleDataService)
         {
+            _sampleDataService = sampleDataService;
         }
 
-        public async Task LoadDataAsync(MasterDetailsViewState viewState)
+        public async void OnNavigatedTo(NavigationContext navigationContext)
         {
             SampleItems.Clear();
 
-            var data = await SampleDataService.GetMasterDetailDataAsync();
+            var data = await _sampleDataService.GetMasterDetailDataAsync();
 
             foreach (var item in data)
             {
                 SampleItems.Add(item);
             }
 
-            if (viewState == MasterDetailsViewState.Both)
-            {
-                Selected = SampleItems.First();
-            }
+            Selected = SampleItems.First();
         }
+
+        public void OnNavigatedFrom(NavigationContext navigationContext)
+        {
+        }
+
+        public bool IsNavigationTarget(NavigationContext navigationContext)
+            => true;
     }
 }

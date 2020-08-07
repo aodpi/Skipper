@@ -1,163 +1,120 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Threading.Tasks;
 using System.Windows.Input;
 
-using GalaSoft.MvvmLight;
-using GalaSoft.MvvmLight.Command;
+using MahApps.Metro.Controls;
 
-using Skipper.Helpers;
-using Skipper.Services;
-using Skipper.Views;
+using Prism.Commands;
+using Prism.Mvvm;
+using Prism.Regions;
 
-using Windows.System;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Input;
-using Windows.UI.Xaml.Navigation;
-
-using WinUI = Microsoft.UI.Xaml.Controls;
+using Skipper.Constants;
+using Skipper.Properties;
 
 namespace Skipper.ViewModels
 {
-    public class ShellViewModel : ViewModelBase
+    public class ShellViewModel : BindableBase
     {
-        private readonly KeyboardAccelerator _altLeftKeyboardAccelerator = BuildKeyboardAccelerator(VirtualKey.Left, VirtualKeyModifiers.Menu);
-        private readonly KeyboardAccelerator _backKeyboardAccelerator = BuildKeyboardAccelerator(VirtualKey.GoBack);
-
-        private bool _isBackEnabled;
-        private IList<KeyboardAccelerator> _keyboardAccelerators;
-        private WinUI.NavigationView _navigationView;
-        private WinUI.NavigationViewItem _selected;
+        private readonly IRegionManager _regionManager;
+        private IRegionNavigationService _navigationService;
+        private HamburgerMenuItem _selectedMenuItem;
+        private HamburgerMenuItem _selectedOptionsMenuItem;
+        private DelegateCommand _goBackCommand;
         private ICommand _loadedCommand;
-        private ICommand _itemInvokedCommand;
+        private ICommand _unloadedCommand;
+        private ICommand _menuItemInvokedCommand;
+        private ICommand _optionsMenuItemInvokedCommand;
 
-        public bool IsBackEnabled
+        public HamburgerMenuItem SelectedMenuItem
         {
-            get { return _isBackEnabled; }
-            set { Set(ref _isBackEnabled, value); }
+            get { return _selectedMenuItem; }
+            set { SetProperty(ref _selectedMenuItem, value); }
         }
 
-        public static NavigationServiceEx NavigationService => ViewModelLocator.Current.NavigationService;
-
-        public WinUI.NavigationViewItem Selected
+        public HamburgerMenuItem SelectedOptionsMenuItem
         {
-            get { return _selected; }
-            set { Set(ref _selected, value); }
+            get { return _selectedOptionsMenuItem; }
+            set { SetProperty(ref _selectedOptionsMenuItem, value); }
         }
 
-        public ICommand LoadedCommand => _loadedCommand ?? (_loadedCommand = new RelayCommand(OnLoaded));
-
-        public ICommand ItemInvokedCommand => _itemInvokedCommand ?? (_itemInvokedCommand = new RelayCommand<WinUI.NavigationViewItemInvokedEventArgs>(OnItemInvoked));
-
-        public ShellViewModel()
+        // TODO WTS: Change the icons and titles for all HamburgerMenuItems here.
+        public ObservableCollection<HamburgerMenuItem> MenuItems { get; } = new ObservableCollection<HamburgerMenuItem>()
         {
+            new HamburgerMenuGlyphItem() { Label = Resources.ShellMainPage, Glyph = "\uE8A5", Tag = PageKeys.Main },
+            new HamburgerMenuGlyphItem() { Label = Resources.ShellMasterDetailPage, Glyph = "\uE8A5", Tag = PageKeys.MasterDetail },
+        };
+
+        public ObservableCollection<HamburgerMenuItem> OptionMenuItems { get; } = new ObservableCollection<HamburgerMenuItem>()
+        {
+            new HamburgerMenuGlyphItem() { Label = Resources.ShellSettingsPage, Glyph = "\uE713", Tag = PageKeys.Settings }
+        };
+
+        public DelegateCommand GoBackCommand => _goBackCommand ?? (_goBackCommand = new DelegateCommand(OnGoBack, CanGoBack));
+
+        public ICommand LoadedCommand => _loadedCommand ?? (_loadedCommand = new DelegateCommand(OnLoaded));
+
+        public ICommand UnloadedCommand => _unloadedCommand ?? (_unloadedCommand = new DelegateCommand(OnUnloaded));
+
+        public ICommand MenuItemInvokedCommand => _menuItemInvokedCommand ?? (_menuItemInvokedCommand = new DelegateCommand(OnMenuItemInvoked));
+
+        public ICommand OptionsMenuItemInvokedCommand => _optionsMenuItemInvokedCommand ?? (_optionsMenuItemInvokedCommand = new DelegateCommand(OnOptionsMenuItemInvoked));
+
+        public ShellViewModel(IRegionManager regionManager)
+        {
+            _regionManager = regionManager;
         }
 
-        public void Initialize(Frame frame, WinUI.NavigationView navigationView, IList<KeyboardAccelerator> keyboardAccelerators)
+        private void OnLoaded()
         {
-            _navigationView = navigationView;
-            _keyboardAccelerators = keyboardAccelerators;
-            NavigationService.Frame = frame;
-            NavigationService.NavigationFailed += Frame_NavigationFailed;
-            NavigationService.Navigated += Frame_Navigated;
-            _navigationView.BackRequested += OnBackRequested;
+            _navigationService = _regionManager.Regions[Regions.Main].NavigationService;
+            _navigationService.Navigated += OnNavigated;
+            SelectedMenuItem = MenuItems.First();
         }
 
-        private async void OnLoaded()
+        private void OnUnloaded()
         {
-            // Keyboard accelerators are added here to avoid showing 'Alt + left' tooltip on the page.
-            // More info on tracking issue https://github.com/Microsoft/microsoft-ui-xaml/issues/8
-            _keyboardAccelerators.Add(_altLeftKeyboardAccelerator);
-            _keyboardAccelerators.Add(_backKeyboardAccelerator);
-            await Task.CompletedTask;
+            _navigationService.Navigated -= OnNavigated;
+            _regionManager.Regions.Remove(Regions.Main);
         }
 
-        private void OnItemInvoked(WinUI.NavigationViewItemInvokedEventArgs args)
+        private bool CanGoBack()
+            => _navigationService != null && _navigationService.Journal.CanGoBack;
+
+        private void OnGoBack()
+            => _navigationService.Journal.GoBack();
+
+        private void OnMenuItemInvoked()
+            => RequestNavigate(SelectedMenuItem.Tag?.ToString());
+
+        private void OnOptionsMenuItemInvoked()
+            => RequestNavigate(SelectedOptionsMenuItem.Tag?.ToString());
+
+        private void RequestNavigate(string target)
         {
-            if (args.IsSettingsInvoked)
+            if (_navigationService.CanNavigate(target))
             {
-                NavigationService.Navigate(typeof(SettingsViewModel).FullName, null, args.RecommendedNavigationTransitionInfo);
-                return;
-            }
-
-            if (args.InvokedItemContainer is WinUI.NavigationViewItem selectedItem)
-            {
-                var pageKey = selectedItem.GetValue(NavHelper.NavigateToProperty) as string;
-                NavigationService.Navigate(pageKey, null, args.RecommendedNavigationTransitionInfo);
-            }
-        }
-
-        private void OnBackRequested(WinUI.NavigationView sender, WinUI.NavigationViewBackRequestedEventArgs args)
-        {
-            NavigationService.GoBack();
-        }
-
-        private void Frame_NavigationFailed(object sender, NavigationFailedEventArgs e)
-        {
-            throw e.Exception;
-        }
-
-        private void Frame_Navigated(object sender, NavigationEventArgs e)
-        {
-            IsBackEnabled = NavigationService.CanGoBack;
-            if (e.SourcePageType == typeof(SettingsPage))
-            {
-                Selected = _navigationView.SettingsItem as WinUI.NavigationViewItem;
-                return;
-            }
-
-            var selectedItem = GetSelectedItem(_navigationView.MenuItems, e.SourcePageType);
-            if (selectedItem != null)
-            {
-                Selected = selectedItem;
+                _navigationService.RequestNavigate(target);
             }
         }
 
-        private WinUI.NavigationViewItem GetSelectedItem(IEnumerable<object> menuItems, Type pageType)
+        private void OnNavigated(object sender, RegionNavigationEventArgs e)
         {
-            foreach (var item in menuItems.OfType<WinUI.NavigationViewItem>())
+            var item = MenuItems
+                        .OfType<HamburgerMenuItem>()
+                        .FirstOrDefault(i => e.Uri.ToString() == i.Tag?.ToString());
+            if (item != null)
             {
-                if (IsMenuItemForPageType(item, pageType))
-                {
-                    return item;
-                }
-
-                var selectedChild = GetSelectedItem(item.MenuItems, pageType);
-                if (selectedChild != null)
-                {
-                    return selectedChild;
-                }
+                SelectedMenuItem = item;
+            }
+            else
+            {
+                SelectedOptionsMenuItem = OptionMenuItems
+                        .OfType<HamburgerMenuItem>()
+                        .FirstOrDefault(i => e.Uri.ToString() == i.Tag?.ToString());
             }
 
-            return null;
-        }
-
-        private bool IsMenuItemForPageType(WinUI.NavigationViewItem menuItem, Type sourcePageType)
-        {
-            var navigatedPageKey = NavigationService.GetNameOfRegisteredPage(sourcePageType);
-            var pageKey = menuItem.GetValue(NavHelper.NavigateToProperty) as string;
-            return pageKey == navigatedPageKey;
-        }
-
-        private static KeyboardAccelerator BuildKeyboardAccelerator(VirtualKey key, VirtualKeyModifiers? modifiers = null)
-        {
-            var keyboardAccelerator = new KeyboardAccelerator() { Key = key };
-            if (modifiers.HasValue)
-            {
-                keyboardAccelerator.Modifiers = modifiers.Value;
-            }
-
-            keyboardAccelerator.Invoked += OnKeyboardAcceleratorInvoked;
-            return keyboardAccelerator;
-        }
-
-        private static void OnKeyboardAcceleratorInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
-        {
-            var result = NavigationService.GoBack();
-            args.Handled = result;
+            GoBackCommand.RaiseCanExecuteChanged();
         }
     }
 }

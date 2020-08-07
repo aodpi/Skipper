@@ -1,18 +1,9 @@
-﻿using System;
-
-using Skipper.ViewModels;
-
-using Windows.UI.Xaml.Controls;
+﻿using System.Windows.Controls;
 
 namespace Skipper.Views
 {
-    public sealed partial class MainPage : Page
+    public partial class MainPage : UserControl
     {
-        private MainViewModel ViewModel
-        {
-            get { return ViewModelLocator.Current.MainViewModel; }
-        }
-
         public MainPage()
         {
             InitializeComponent();

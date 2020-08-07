@@ -1,77 +1,71 @@
 ﻿using System;
-using System.Threading.Tasks;
 using System.Windows.Input;
 
-using GalaSoft.MvvmLight;
-using GalaSoft.MvvmLight.Command;
+using Prism.Commands;
+using Prism.Mvvm;
+using Prism.Regions;
 
-using Skipper.Helpers;
-using Skipper.Services;
-
-using Windows.ApplicationModel;
-using Windows.UI.Xaml;
+using Skipper.Contracts.Services;
+using Skipper.Models;
 
 namespace Skipper.ViewModels
 {
-    // TODO WTS: Add other settings as necessary. For help see https://github.com/Microsoft/WindowsTemplateStudio/blob/release/docs/UWP/pages/settings.md
-    public class SettingsViewModel : ViewModelBase
+    // TODO WTS: Change the URL for your privacy policy in the appsettings.json file, currently set to https://YourPrivacyUrlGoesHere
+    public class SettingsViewModel : BindableBase, INavigationAware
     {
-        private ElementTheme _elementTheme = ThemeSelectorService.Theme;
-
-        public ElementTheme ElementTheme
-        {
-            get { return _elementTheme; }
-
-            set { Set(ref _elementTheme, value); }
-        }
-
+        private readonly AppConfig _appConfig;
+        private readonly IThemeSelectorService _themeSelectorService;
+        private readonly ISystemService _systemService;
+        private readonly IApplicationInfoService _applicationInfoService;
+        private AppTheme _theme;
         private string _versionDescription;
+        private ICommand _setThemeCommand;
+        private ICommand _privacyStatementCommand;
+
+        public AppTheme Theme
+        {
+            get { return _theme; }
+            set { SetProperty(ref _theme, value); }
+        }
 
         public string VersionDescription
         {
             get { return _versionDescription; }
-
-            set { Set(ref _versionDescription, value); }
+            set { SetProperty(ref _versionDescription, value); }
         }
 
-        private ICommand _switchThemeCommand;
+        public ICommand SetThemeCommand => _setThemeCommand ?? (_setThemeCommand = new DelegateCommand<string>(OnSetTheme));
 
-        public ICommand SwitchThemeCommand
+        public ICommand PrivacyStatementCommand => _privacyStatementCommand ?? (_privacyStatementCommand = new DelegateCommand(OnPrivacyStatement));
+
+        public SettingsViewModel(AppConfig appConfig, IThemeSelectorService themeSelectorService, ISystemService systemService, IApplicationInfoService applicationInfoService)
         {
-            get
-            {
-                if (_switchThemeCommand == null)
-                {
-                    _switchThemeCommand = new RelayCommand<ElementTheme>(
-                        async (param) =>
-                        {
-                            ElementTheme = param;
-                            await ThemeSelectorService.SetThemeAsync(param);
-                        });
-                }
-
-                return _switchThemeCommand;
-            }
+            _appConfig = appConfig;
+            _themeSelectorService = themeSelectorService;
+            _systemService = systemService;
+            _applicationInfoService = applicationInfoService;
         }
 
-        public SettingsViewModel()
+        public void OnNavigatedTo(NavigationContext navigationContext)
+        {
+            VersionDescription = $"Skipper - {_applicationInfoService.GetVersion()}";
+            Theme = _themeSelectorService.GetCurrentTheme();
+        }
+
+        public void OnNavigatedFrom(NavigationContext navigationContext)
         {
         }
 
-        public async Task InitializeAsync()
+        private void OnSetTheme(string themeName)
         {
-            VersionDescription = GetVersionDescription();
-            await Task.CompletedTask;
+            var theme = (AppTheme)Enum.Parse(typeof(AppTheme), themeName);
+            _themeSelectorService.SetTheme(theme);
         }
 
-        private string GetVersionDescription()
-        {
-            var appName = "AppDisplayName".GetLocalized();
-            var package = Package.Current;
-            var packageId = package.Id;
-            var version = packageId.Version;
+        private void OnPrivacyStatement()
+            => _systemService.OpenInWebBrowser(_appConfig.PrivacyStatement);
 
-            return $"{appName} - {version.Major}.{version.Minor}.{version.Build}.{version.Revision}";
-        }
+        public bool IsNavigationTarget(NavigationContext navigationContext)
+            => true;
     }
 }

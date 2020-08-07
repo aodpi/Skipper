@@ -1,64 +1,72 @@
 ﻿using System;
-using System.Threading.Tasks;
+using System.Windows;
 
-using Skipper.Helpers;
+using ControlzEx.Theming;
 
-using Windows.ApplicationModel.Core;
-using Windows.Storage;
-using Windows.UI.Core;
-using Windows.UI.Xaml;
+using Microsoft.Win32;
+
+using Skipper.Contracts.Services;
+using Skipper.Models;
 
 namespace Skipper.Services
 {
-    public static class ThemeSelectorService
+    public class ThemeSelectorService : IThemeSelectorService
     {
-        private const string SettingsKey = "AppBackgroundRequestedTheme";
+        private bool IsHighContrastActive
+                        => SystemParameters.HighContrast;
 
-        public static ElementTheme Theme { get; set; } = ElementTheme.Default;
-
-        public static async Task InitializeAsync()
+        public ThemeSelectorService()
         {
-            Theme = await LoadThemeFromSettingsAsync();
+            SystemEvents.UserPreferenceChanging += OnUserPreferenceChanging;
         }
 
-        public static async Task SetThemeAsync(ElementTheme theme)
+        public bool SetTheme(AppTheme? theme = null)
         {
-            Theme = theme;
-
-            await SetRequestedThemeAsync();
-            await SaveThemeInSettingsAsync(Theme);
-        }
-
-        public static async Task SetRequestedThemeAsync()
-        {
-            foreach (var view in CoreApplication.Views)
+            if (IsHighContrastActive)
             {
-                await view.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+                // TODO WTS: Set high contrast theme
+                // You can add custom themes following the docs on https://mahapps.com/docs/themes/thememanager
+            }
+            else if (theme == null)
+            {
+                if (App.Current.Properties.Contains("Theme"))
                 {
-                    if (Window.Current.Content is FrameworkElement frameworkElement)
-                    {
-                        frameworkElement.RequestedTheme = Theme;
-                    }
-                });
+                    // Read saved theme from properties
+                    var themeName = App.Current.Properties["Theme"].ToString();
+                    theme = (AppTheme)Enum.Parse(typeof(AppTheme), themeName);
+                }
+                else
+                {
+                    // Set default theme
+                    theme = AppTheme.Light;
+                }
             }
-        }
 
-        private static async Task<ElementTheme> LoadThemeFromSettingsAsync()
-        {
-            ElementTheme cacheTheme = ElementTheme.Default;
-            string themeName = await ApplicationData.Current.LocalSettings.ReadAsync<string>(SettingsKey);
-
-            if (!string.IsNullOrEmpty(themeName))
+            var currentTheme = ThemeManager.Current.DetectTheme(Application.Current);
+            if (currentTheme == null || currentTheme.Name != theme.ToString())
             {
-                Enum.TryParse(themeName, out cacheTheme);
+                ThemeManager.Current.ChangeTheme(Application.Current, $"{theme}.Blue");
+                App.Current.Properties["Theme"] = theme.ToString();
+                return true;
             }
 
-            return cacheTheme;
+            return false;
         }
 
-        private static async Task SaveThemeInSettingsAsync(ElementTheme theme)
+        public AppTheme GetCurrentTheme()
         {
-            await ApplicationData.Current.LocalSettings.SaveAsync(SettingsKey, theme.ToString());
+            var themeName = App.Current.Properties["Theme"]?.ToString();
+            Enum.TryParse(themeName, out AppTheme theme);
+            return theme;
+        }
+
+        private void OnUserPreferenceChanging(object sender, UserPreferenceChangingEventArgs e)
+        {
+            if (e.Category == UserPreferenceCategory.Color ||
+                e.Category == UserPreferenceCategory.VisualStyle)
+            {
+                SetTheme();
+            }
         }
     }
 }
